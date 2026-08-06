@@ -25,7 +25,7 @@ jobs:
 
       - name: 還原 Firebase 密鑰檔案
         run: |
-          echo "${{ secrets.FIREBASE_KEY_JSON }}" > serviceAccountKey.json
+          echo '${{ secrets.FIREBASE_KEY_JSON }}' > serviceAccountKey.json
 
       - name: 執行 Python 爬蟲
         run: |
