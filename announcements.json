@@ -80,6 +80,17 @@
     ],
     "學務處": [
         {
+            "title": "測試2",
+            "date": "2026年8月06日",
+            "author": "ys",
+            "hits": "0",
+            "category": "學務處",
+            "url": "http://140.138.172.124/demo2/index.php/zh/student-affairs/2",
+            "content": "手機測試2",
+            "images": [],
+            "videos": []
+        },
+        {
             "title": "學務處測試",
             "date": "2026年7月31日",
             "author": "ys",
