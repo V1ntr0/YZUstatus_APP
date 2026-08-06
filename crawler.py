@@ -165,7 +165,7 @@ def upload_to_github():
     try:
         token = os.environ.get("GITHUB_TOKEN") or "你的_GITHUB_TOKEN"
         g = Github(token)
-        repo = g.get_repo("你的GitHub帳號/你的專案名稱")
+        repo = g.get_repo("V1ntr0/YZUstatus_APP")
         
         # 讀取本地剛剛寫好的 JSON 內容
         with open("announcements.json", "r", encoding="utf-8") as f:
