@@ -161,23 +161,38 @@ def job():
 from github import Github
 
 # 自動上傳至 GitHub 的函式
+import os
+from github import Github
+
 def upload_to_github():
     try:
-        token = os.environ.get("GITHUB_TOKEN")
+        token = os.environ.get("GITHUB_TOKEN") or "你的_GITHUB_TOKEN"
         g = Github(token)
         repo = g.get_repo("你的GitHub帳號/你的專案名稱")
         
+        # 讀取本地剛剛寫好的 JSON 內容
         with open("announcements.json", "r", encoding="utf-8") as f:
-            content = f.read()
-
-        # 取得遠端的檔案（如果沒有會報錯，所以用 try 包起來或更新）
+            local_content = f.read()
+            
         try:
+            # 1. 嘗試取得遠端 GitHub 上現有的檔案
             file = repo.get_contents("announcements.json")
-            repo.update_file(file.path, "Auto update announcements", content, file.sha)
-        except:
-            repo.create_file("announcements.json", "Initial commit", content)
-
-        print("  ☁️ 成功將最新 announcements.json 同步至 GitHub 雲端！")
+            remote_content = file.decoded_content.decode("utf-8")
+            
+            # 2. 比對本地跟遠端內容是否一模一樣
+            if remote_content == local_content:
+                print("  💤 公告內容沒有改變，不需要重複 Commit。")
+                return  # 直接結束，不執行更新
+            
+            # 3. 如果內容不一樣，才執行更新
+            repo.update_file(file.path, "Auto update (New announcements detected)", local_content, file.sha)
+            print("  ☁️ 偵測到新公告！成功同步至 GitHub 雲端！")
+            
+        except Exception:
+            # 如果遠端還沒有這個檔案（第一次執行），就直接建立
+            repo.create_file("announcements.json", "Initial commit", local_content)
+            print("  ☁️ 初始化：成功建立 announcements.json！")
+            
     except Exception as e:
         print(f"  ❌ 雲端同步失敗: {e}")
 
