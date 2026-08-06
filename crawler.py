@@ -161,9 +161,6 @@ def job():
 from github import Github
 
 # 自動上傳至 GitHub 的函式
-import os
-from github import Github
-
 def upload_to_github():
     try:
         token = os.environ.get("GITHUB_TOKEN") or "你的_GITHUB_TOKEN"
