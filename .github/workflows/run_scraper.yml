@@ -10,6 +10,8 @@ on:
 jobs:
   run-scraper:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - name: 取得專案程式碼
         uses: actions/checkout@v4
