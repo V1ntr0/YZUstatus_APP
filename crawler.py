@@ -6,8 +6,9 @@ import os
 import time
 import firebase_admin
 from firebase_admin import credentials, messaging
+from github import Github
 
-# 1. 初始化 Firebase 憑證 (請確保 serviceAccountKey.json 跟這支程式在同一個資料夾)
+# 1. 初始化 Firebase 憑證
 if not firebase_admin._apps:
     cred = credentials.Certificate("serviceAccountKey.json")
     firebase_admin.initialize_app(cred)
@@ -22,24 +23,9 @@ offices = {
 }
 
 date_pattern = re.compile(r'\d{4}[-/年]\d{1,2}[-/月]\d{1,2}[-/日]')
-CACHE_FILE = "sent_announcements.json"
-
-# 載入過去已發送過的公告清單，避免重複推播
-def load_cache():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return []
-
-def save_cache(cache):
-    if len(cache) > 200:
-        cache = cache[-200:]
-    with open(CACHE_FILE, "w", encoding="utf-8") as f:
-        json.dump(cache, f, ensure_ascii=False, indent=4)
 
 def send_push_notification(title, office_name):
     try:
-        # 發送給所有訂閱 'announcements' 主題的手機 App 用戶
         message = messaging.Message(
             notification=messaging.Notification(
                 title=f"📢 【{office_name}新公告】",
@@ -47,14 +33,28 @@ def send_push_notification(title, office_name):
             ),
             topic='announcements',
         )
-        response = messaging.send(message)
+        messaging.send(message)
         print(f"  🚀 成功發送 Firebase 推播通知: {title}")
     except Exception as e:
         print(f"  ❌ 推播失敗: {e}")
 
 def job():
     print(f"\n[{time.strftime('%Y-%m-%d %H:%M:%S')}] 正在檢查學校最新公告...")
-    sent_list = load_cache()
+    
+    # 1. 先從 GitHub 遠端抓取現有的 announcements.json 來當作比對基準
+    existing_titles = set()
+    try:
+        token = os.environ.get("GITHUB_TOKEN")
+        g = Github(token)
+        repo = g.get_repo("V1ntr0/YZUstatus_APP") # 你的帳號/專案
+        file = repo.get_contents("announcements.json")
+        old_data = json.loads(file.decoded_content.decode("utf-8"))
+        for category, items in old_data.items():
+            for item in items:
+                existing_titles.add(f"[{category}] {item['title']}")
+    except Exception:
+        print("  ⚠️ 遠端尚無舊的 announcements.json（初次執行）")
+
     all_data = {}
     new_announcements_found = 0
 
@@ -101,7 +101,7 @@ def job():
                                 detail_match = date_pattern.search(detail_soup.text)
                                 if detail_match:
                                     date = detail_match.group(0)
-                            
+                        
                             article_body = detail_soup.select_one('.item-page') or detail_soup.select_one('div[itemprop="articleBody"]')
                             if article_body:
                                 content = article_body.text.strip()
@@ -116,25 +116,16 @@ def job():
                                         if iframe_src.startswith('//'):
                                             iframe_src = f"https:{iframe_src}"
                                         videos.append(iframe_src)
-                                for a_tag in article_body.select('a'):
-                                    a_href = a_tag.get('href', '')
-                                    if 'youtube.com' in a_href or 'youtu.be' in a_href or a_href.endswith(('.mp4', '.mov')):
-                                        if a_href not in videos:
-                                            videos.append(a_href)
                     except Exception:
                         pass
                     
                     item_id = f"[{name}] {title}"
                     
-                    # 檢查是否為全新公告
-                    if item_id not in sent_list and len(sent_list) > 0:
-                        print(f"  🔥 發現新公告！[{name}] {title}")
+                    # 如果遠端舊資料抓得到，且這個 item 不在舊清單裡 ➔ 代表是全新公告！
+                    if len(existing_titles) > 0 and item_id not in existing_titles:
+                        print(f"  🔥 發現新公告！{item_id}")
                         send_push_notification(title, name)
-                        sent_list.append(item_id)
                         new_announcements_found += 1
-                    elif len(sent_list) == 0:
-                        # 第一次初始化時，先把現有的加入快取，不發推播
-                        sent_list.append(item_id)
 
                     all_data[name].append({
                         "title": title,
@@ -150,53 +141,40 @@ def job():
         except Exception as e:
             print(f"無法連線至 {name}: {e}")
 
-    # 儲存最新的 JSON 供 App 聯網讀取
+    # 儲存本地 JSON
     with open("announcements.json", "w", encoding="utf-8") as f:
         json.dump(all_data, f, ensure_ascii=False, indent=4)
-    
-    save_cache(sent_list)
+        
     print(f"✅ 檢查完畢！本次新增 {new_announcements_found} 筆新公告。")
     upload_to_github()
 
-from github import Github
-
-# 自動上傳至 GitHub 的函式
+# 上傳至 GitHub 的函式
 def upload_to_github():
     try:
-        token = os.environ.get("GITHUB_TOKEN") or "你的_GITHUB_TOKEN"
+        token = os.environ.get("GITHUB_TOKEN")
         g = Github(token)
         repo = g.get_repo("V1ntr0/YZUstatus_APP")
         
-        # 讀取本地剛剛寫好的 JSON 內容
         with open("announcements.json", "r", encoding="utf-8") as f:
             local_content = f.read()
             
         try:
-            # 1. 嘗試取得遠端 GitHub 上現有的檔案
             file = repo.get_contents("announcements.json")
             remote_content = file.decoded_content.decode("utf-8")
             
-            # 2. 比對本地跟遠端內容是否一模一樣
             if remote_content == local_content:
                 print("  💤 公告內容沒有改變，不需要重複 Commit。")
-                return  # 直接結束，不執行更新
+                return 
             
-            # 3. 如果內容不一樣，才執行更新
             repo.update_file(file.path, "Auto update (New announcements detected)", local_content, file.sha)
             print("  ☁️ 偵測到新公告！成功同步至 GitHub 雲端！")
             
         except Exception:
-            # 如果遠端還沒有這個檔案（第一次執行），就直接建立
             repo.create_file("announcements.json", "Initial commit", local_content)
             print("  ☁️ 初始化：成功建立 announcements.json！")
             
     except Exception as e:
         print(f"  ❌ 雲端同步失敗: {e}")
 
-# 主程式進入點：設定成無限迴圈，每隔 60 秒自動檢查一次
 if __name__ == "__main__":
-    print("🚀 元智公告即時監控與推播伺服器已啟動...")
-    #while True:
     job()
-        #print("⏳ 等待 60 秒後進行下一次檢查...\n")
-   #     time.sleep(60)
