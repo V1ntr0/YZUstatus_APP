@@ -196,7 +196,7 @@ def upload_to_github():
 # 主程式進入點：設定成無限迴圈，每隔 60 秒自動檢查一次
 if __name__ == "__main__":
     print("🚀 元智公告即時監控與推播伺服器已啟動...")
-    while True:
-        job()
-        print("⏳ 等待 60 秒後進行下一次檢查...\n")
-        time.sleep(60)
+    #while True:
+    job()
+        #print("⏳ 等待 60 秒後進行下一次檢查...\n")
+   #     time.sleep(60)
